@@ -37,41 +37,17 @@ import static java.lang.annotation.ElementType.TYPE;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 @SpringBootApplication
-//@RegisterReflectionForBinding(MySuperAwesomeClass.class)
 @ImportRuntimeHints(DemoApplication.Hints.class)
 public class DemoApplication {
 
-
-    @Component
-    static class Cart implements Serializable {
+    @Bean
+    static SerializationBeanFactoryInitializationAotProcessor beanFactoryInitializationAotProcessor() {
+        return new SerializationBeanFactoryInitializationAotProcessor();
     }
 
     @Bean
-    static EmbabelBeanFactoryInitializationAotProcessor embabelBeanFactoryInitializationAotProcessor() {
-        return new EmbabelBeanFactoryInitializationAotProcessor();
-    }
-
-    static class EmbabelBeanFactoryInitializationAotProcessor
-            implements BeanFactoryInitializationAotProcessor {
-
-        @Override
-        public BeanFactoryInitializationAotContribution processAheadOfTime(
-                ConfigurableListableBeanFactory beanFactory) {
-            var serializableTypes = new HashSet<TypeReference>();
-            for (var beanDefinitionName : beanFactory.getBeanDefinitionNames()) {
-                var beanClass = Objects.requireNonNull(beanFactory.getType(beanDefinitionName));
-                if (Serializable.class.isAssignableFrom(beanClass)) {
-                    serializableTypes.add(TypeReference.of(beanClass));
-                }
-            }
-            return (generationContext, _) -> {
-                var runtimeHints = generationContext.getRuntimeHints();
-                for (var serializableType : serializableTypes) {
-                    runtimeHints.serialization().registerType(serializableType);
-                    System.out.println("registering serializable type: " + serializableType + "");
-                }
-            };
-        }
+    static LoggedSmartInstantiationAwareBeanPostProcessor loggedBeanPostProcessor() {
+        return new LoggedSmartInstantiationAwareBeanPostProcessor();
     }
 
     static class Hints implements RuntimeHintsRegistrar {
@@ -89,19 +65,15 @@ public class DemoApplication {
         }
     }
 
+    private static final Resource RESOURCE = new ClassPathResource("/message");
+
     public static void main(String[] args) {
         SpringApplication.run(DemoApplication.class, args);
     }
 
-    static final Resource RESOURCE = new ClassPathResource("/message");
-
-
-    interface Foo {
-        void bar();
-    }
 
     @Bean
-    ApplicationRunner runner(LoggedTargetInstance loggedTargetInstance ) {
+    ApplicationRunner runner(LoggedTargetInstance loggedTargetInstance) {
         return _ -> {
 
 
@@ -120,7 +92,7 @@ public class DemoApplication {
             var contentAsString = RESOURCE.getContentAsString(Charset.defaultCharset());
             System.out.println("content: " + contentAsString);
 
-            var clzzStringName = Class.forName("com.example.demo.MySuperAwesomeClass");
+            var clzzStringName = Class.forName("com.example.demo.DemoApplication.MySuperAwesomeClass");
             var clzzInstance = clzzStringName.getDeclaredConstructors()[0].newInstance();
             System.out.println(clzzInstance);
 
@@ -136,15 +108,33 @@ public class DemoApplication {
         };
     }
 
-    @Bean
-    static LoggedBeanPostProcessor loggedBeanPostProcessor() {
-        return new LoggedBeanPostProcessor();
-    }
 
 }
 
+class SerializationBeanFactoryInitializationAotProcessor
+        implements BeanFactoryInitializationAotProcessor {
 
-class LoggedBeanPostProcessor implements SmartInstantiationAwareBeanPostProcessor {
+    @Override
+    public BeanFactoryInitializationAotContribution processAheadOfTime(
+            ConfigurableListableBeanFactory beanFactory) {
+        var serializableTypes = new HashSet<TypeReference>();
+        for (var beanDefinitionName : beanFactory.getBeanDefinitionNames()) {
+            var beanClass = Objects.requireNonNull(beanFactory.getType(beanDefinitionName));
+            if (Serializable.class.isAssignableFrom(beanClass)) {
+                serializableTypes.add(TypeReference.of(beanClass));
+            }
+        }
+        return (generationContext, _) -> {
+            var runtimeHints = generationContext.getRuntimeHints();
+            for (var serializableType : serializableTypes) {
+                runtimeHints.serialization().registerType(serializableType);
+                System.out.println("registering serializable type: " + serializableType + "");
+            }
+        };
+    }
+}
+
+class LoggedSmartInstantiationAwareBeanPostProcessor implements SmartInstantiationAwareBeanPostProcessor {
 
 
     private static ProxyFactory proxyFactory(Object target, Class<?> targetClass) {
@@ -192,6 +182,12 @@ class LoggedBeanPostProcessor implements SmartInstantiationAwareBeanPostProcesso
 
 }
 
+
+interface Foo {
+    void bar();
+}
+
+
 @Inherited
 @Target({TYPE, METHOD})
 @Retention(RUNTIME)
@@ -208,10 +204,14 @@ class LoggedTargetInstance {
     }
 }
 
+@Component
+class Cart implements Serializable {
+}
+
+
 class MySuperAwesomeClass {
 
     public String mySuperMethod() {
         return ("MySuperClass.mySuperMethod()");
     }
 }
-
